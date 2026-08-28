@@ -1,0 +1,28 @@
+# URI rewrite table for the mock CloudFront KeyValueStore.
+#
+# Seeded into the real store by terraform/kvs.tf; read directly by the local
+# edge shim. This file is the single source of truth for both.
+#
+# Format: a list of { from, to } pairs.
+#   - `from` is the full incoming URI path, always leading-slash. Vanity URLs
+#     and legacy path migrations share one mechanism; a vanity URL is simply
+#     a short `from`.
+#   - `to` is the rewritten target path.
+#   - Compiled into KeyValueStore as key=`from`, value=`to`. Keys are capped
+#     at 512 bytes, values at 1 KB, and the whole store at 5 MB.
+#   - Lookup is an exact match on the normalised URI (lowercased, trailing
+#     slash stripped), so define `from` in lowercase with no trailing slash.
+
+# Vanity URLs
+- from: "/pay"
+  to:   "/v1/payments/methods"
+- from: "/bill"
+  to:   "/v1/billing/statement"
+- from: "/join"
+  to:   "/v1/loyalty/signup"
+
+# Legacy path migrations
+- from: "/v1/payment-old"
+  to:   "/v1/payments-new"
+- from: "/v1/loyalty-program-11"
+  to:   "/v1/loyalty"

@@ -1,6 +1,6 @@
 # Postman Collection
 
-(../../CLAUDE.md needs to be read before this file)
+(../../CLAUDE.md needs to be read before this file, if not read already)
 
 In the `postman` dir, we need postman JSON files which can be imported into a Postman Collection in Postman.
 
