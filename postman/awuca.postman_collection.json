@@ -1,0 +1,1677 @@
+{
+  "info": {
+    "_postman_id": "8f2c41a6-5d3e-4b17-9c0a-1e7d6b4a2f90",
+    "name": "ACME Water Utility Customer App (AWUCA)",
+    "description": "Customer-facing API for the ACME Water Utility Customer App.\n\nThis collection is the SOURCE OF TRUTH for the harness:\n\n  * Prism mocks it directly (Prism reads Postman Collections natively).\n  * The Playwright @contract suite is generated from it at runtime.\n  * The Python backend in /python-backend implements it.\n\nPaths are pinned by /edge/kvs/routing.yaml. The CloudFront Function rewrites\n/pay -> /v1/payments/methods, /bill -> /v1/billing/statement and\n/join -> /v1/loyalty/signup, so those three paths must not be renamed without\nediting the rewrite table in the same change.\n\nWorkload split follows README section 2A: everything is a mock ECS task except\nthe Loyalty folder, which is a mock Lambda.\n\nBodies use lorem ipsum. Per ai/tasks/apps.md the point is the development\nparadigm, not the fidelity of the data.\n\n\nSEEDED DEMO DATA\n\nEvery customer is seeded identically on first token issue. The examples below\ndescribe that seed, so the generated contract suite is satisfiable against a\nreal implementation and not only against a mock.\n\n  * Accounts acc-0001 .. acc-000N, where N is the x-account-count sent at\n    token issue. The last is `closed` when N >= 3; the rest are `open`.\n  * Payment methods pm-0001 (card, default) and pm-0002 (direct debit).\n  * Loyalty: acc-0001 is ENROLLED, acc-0002 is NOT.\n  * Closure: acc-0001 has a Pending request, acc-0002 has none.\n\n\nTWO EXAMPLES, TWO REQUESTS\n\nWhere an endpoint documents both a success and a not-found example, the two\nmust differ in their REQUEST, not merely in the state of the world. One\naccount cannot be both enrolled and not enrolled, so a pair of identical\nrequests with different responses is unsatisfiable for any real backend and\nonly ever passes against a mock. That is why loyalty enrolment is keyed by\naccountId and why the closure examples use different accounts.\n\nKeep this property when adding examples.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "accountId",
+      "value": "acc-0001",
+      "type": "string"
+    },
+    {
+      "key": "methodId",
+      "value": "pm-0001",
+      "type": "string"
+    },
+    {
+      "key": "accountCount",
+      "value": "3",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Public",
+      "description": "Unauthenticated surface. Purpose 1.",
+      "item": [
+        {
+          "name": "Get Landing Content",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/public/landing",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "public",
+                "landing"
+              ]
+            },
+            "description": "Lorem ipsum marketing content for the unauthenticated landing page. No bearer token required."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/v1/public/landing",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "v1",
+                    "public",
+                    "landing"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"title\": \"ACME Water Utility\",\n  \"hero\": \"Lorem ipsum dolor sit amet, consectetur adipiscing elit.\",\n  \"sections\": [\n    {\n      \"heading\": \"Lorem ipsum\",\n      \"body\": \"Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.\"\n    },\n    {\n      \"heading\": \"Duis aute\",\n      \"body\": \"Irure dolor in reprehenderit in voluptate velit esse cillum dolore.\"\n    }\n  ],\n  \"links\": [\n    { \"label\": \"Pay a bill\", \"href\": \"/pay\" },\n    { \"label\": \"View statement\", \"href\": \"/bill\" },\n    { \"label\": \"Join loyalty\", \"href\": \"/join\" }\n  ]\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "description": "Purpose 2. The x-account-count request header decides how many accounts the issued token is authorised for.",
+      "item": [
+        {
+          "name": "Create Access Token",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "x-account-count",
+                "value": "{{accountCount}}",
+                "description": "How many accounts this customer should be authorised for. Drives the size of the account list and all per-account data."
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"cust-1001\",\n  \"password\": \"lorem-ipsum\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/auth/token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "token"
+              ]
+            },
+            "description": "Exchange demo credentials for a bearer token. The token carries the account count taken from the x-account-count header."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "x-account-count",
+                    "value": "3"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"customerId\": \"cust-1001\",\n  \"password\": \"lorem-ipsum\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/v1/auth/token",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "v1",
+                    "auth",
+                    "token"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"accessToken\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.bG9yZW0.aXBzdW0\",\n  \"tokenType\": \"Bearer\",\n  \"expiresIn\": 3600,\n  \"accountCount\": 3,\n  \"scope\": \"billing:read balance:read payments:write loyalty:write\"\n}"
+            },
+            {
+              "name": "400 Bad Request - x-account-count out of range",
+              "originalRequest": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "x-account-count",
+                    "value": "0"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"customerId\": \"cust-1001\",\n  \"password\": \"lorem-ipsum\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/v1/auth/token",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "v1",
+                    "auth",
+                    "token"
+                  ]
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"error\": \"bad_request\",\n  \"message\": \"x-account-count must be an integer between 1 and 10\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Accounts",
+      "description": "Purposes 3, 4 and 7.",
+      "item": [
+        {
+          "name": "List Accounts",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/accounts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "accounts"
+              ]
+            },
+            "description": "List the customer's accounts with open/closed status. The number returned matches the x-account-count used at token issue."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/v1/accounts",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "v1",
+                    "accounts"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"accounts\": [\n    {\n      \"accountId\": \"acc-0001\",\n      \"label\": \"Lorem Ipsum Residence\",\n      \"status\": \"open\",\n      \"serviceType\": \"water\"\n    },\n    {\n      \"accountId\": \"acc-0002\",\n      \"label\": \"Dolor Sit Workshop\",\n      \"status\": \"open\",\n      \"serviceType\": \"water\"\n    },\n    {\n      \"accountId\": \"acc-0003\",\n      \"label\": \"Amet Consectetur Annex\",\n      \"status\": \"closed\",\n      \"serviceType\": \"water\"\n    }\n  ],\n  \"count\": 3\n}"
+            },
+            {
+              "name": "401 Unauthorized",
+              "originalRequest": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/v1/accounts",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "v1",
+                    "accounts"
+                  ]
+                }
+              },
+              "status": "Unauthorized",
+              "code": 401,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"error\": \"unauthorized\",\n  \"message\": \"Missing or invalid bearer token\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Account Address",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/accounts/:accountId/address",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "accounts",
+                ":accountId",
+                "address"
+              ],
+              "variable": [
+                {
+                  "key": "accountId",
+                  "value": "{{accountId}}"
+                }
+              ]
+            },
+            "description": "Read-only supply address for the selected account. There is deliberately no write verb on this resource."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/v1/accounts/:accountId/address",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "v1",
+                    "accounts",
+                    ":accountId",
+                    "address"
+                  ],
+                  "variable": [
+                    {
+                      "key": "accountId",
+                      "value": "acc-0001"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"accountId\": \"acc-0001\",\n  \"readOnly\": true,\n  \"address\": {\n    \"line1\": \"12 Lorem Street\",\n    \"line2\": \"Ipsum Quarter\",\n    \"city\": \"Doloropolis\",\n    \"region\": \"Ametshire\",\n    \"postalCode\": \"LI1 2PS\",\n    \"country\": \"GB\"\n  }\n}"
+            },
+            {
+              "name": "404 Not Found",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/v1/accounts/:accountId/address",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "v1",
+                    "accounts",
+                    ":accountId",
+                    "address"
+                  ],
+                  "variable": [
+                    {
+                      "key": "accountId",
+                      "value": "acc-9999"
+                    }
+                  ]
+                }
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"error\": \"not_found\",\n  \"message\": \"No such account for this customer\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Account Balance",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/accounts/:accountId/balance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "accounts",
+                ":accountId",
+                "balance"
+              ],
+              "variable": [
+                {
+                  "key": "accountId",
+                  "value": "{{accountId}}"
+                }
+              ]
+            },
+            "description": "Current balance for the selected account. Part of the billing and balance data gated by purpose 2."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/v1/accounts/:accountId/balance",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "v1",
+                    "accounts",
+                    ":accountId",
+                    "balance"
+                  ],
+                  "variable": [
+                    {
+                      "key": "accountId",
+                      "value": "acc-0001"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"accountId\": \"acc-0001\",\n  \"currency\": \"GBP\",\n  \"balance\": 42.5,\n  \"status\": \"due\",\n  \"dueDate\": \"2026-09-30\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Account Payment History",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/accounts/:accountId/payments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "accounts",
+                ":accountId",
+                "payments"
+              ],
+              "variable": [
+                {
+                  "key": "accountId",
+                  "value": "{{accountId}}"
+                }
+              ]
+            },
+            "description": "Purpose 7. Per-account payment history as a combined debit and credit list."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/v1/accounts/:accountId/payments",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "v1",
+                    "accounts",
+                    ":accountId",
+                    "payments"
+                  ],
+                  "variable": [
+                    {
+                      "key": "accountId",
+                      "value": "acc-0001"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"accountId\": \"acc-0001\",\n  \"currency\": \"GBP\",\n  \"count\": 3,\n  \"transactions\": [\n    {\n      \"transactionId\": \"txn-0003\",\n      \"date\": \"2026-08-01\",\n      \"type\": \"debit\",\n      \"amount\": 32.5,\n      \"description\": \"Lorem ipsum water supply\"\n    },\n    {\n      \"transactionId\": \"txn-0002\",\n      \"date\": \"2026-07-15\",\n      \"type\": \"credit\",\n      \"amount\": 20.0,\n      \"description\": \"Dolor sit amet payment received\"\n    },\n    {\n      \"transactionId\": \"txn-0001\",\n      \"date\": \"2026-07-01\",\n      \"type\": \"debit\",\n      \"amount\": 30.0,\n      \"description\": \"Consectetur adipiscing wastewater\"\n    }\n  ]\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Billing",
+      "description": "Purpose 2 and 7. Reached by the /bill vanity URL via the CloudFront Function.",
+      "item": [
+        {
+          "name": "Get Billing Statement",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/billing/statement?accountId={{accountId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "billing",
+                "statement"
+              ],
+              "query": [
+                {
+                  "key": "accountId",
+                  "value": "{{accountId}}"
+                }
+              ]
+            },
+            "description": "Statement for the selected account.\n\nPATH IS PINNED: /edge/kvs/routing.yaml rewrites /bill to this path. Renaming it requires editing the rewrite table in the same change."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/v1/billing/statement?accountId=acc-0001",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "v1",
+                    "billing",
+                    "statement"
+                  ],
+                  "query": [
+                    {
+                      "key": "accountId",
+                      "value": "acc-0001"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"accountId\": \"acc-0001\",\n  \"statementId\": \"stm-2026-08\",\n  \"periodStart\": \"2026-07-01\",\n  \"periodEnd\": \"2026-09-30\",\n  \"currency\": \"GBP\",\n  \"openingBalance\": 20.0,\n  \"closingBalance\": 42.5,\n  \"lines\": [\n    {\n      \"description\": \"Lorem ipsum water supply\",\n      \"amount\": 32.5\n    },\n    {\n      \"description\": \"Consectetur adipiscing wastewater\",\n      \"amount\": 10.0\n    }\n  ]\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Payment Methods",
+      "description": "Purpose 5. List and update payment methods including their billing addresses. Reached by the /pay vanity URL.",
+      "item": [
+        {
+          "name": "List Payment Methods",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/payments/methods",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "payments",
+                "methods"
+              ]
+            },
+            "description": "PATH IS PINNED: /edge/kvs/routing.yaml rewrites /pay to this path."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/v1/payments/methods",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "v1",
+                    "payments",
+                    "methods"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"count\": 2,\n  \"methods\": [\n    {\n      \"methodId\": \"pm-0001\",\n      \"type\": \"card\",\n      \"label\": \"Lorem card ending 4242\",\n      \"default\": true,\n      \"billingAddress\": {\n        \"line1\": \"12 Lorem Street\",\n        \"line2\": \"Ipsum Quarter\",\n        \"city\": \"Doloropolis\",\n        \"region\": \"Ametshire\",\n        \"postalCode\": \"LI1 2PS\",\n        \"country\": \"GB\"\n      }\n    },\n    {\n      \"methodId\": \"pm-0002\",\n      \"type\": \"direct_debit\",\n      \"label\": \"Ipsum Bank ending 1234\",\n      \"default\": false,\n      \"billingAddress\": {\n        \"line1\": \"9 Dolor Way\",\n        \"line2\": null,\n        \"city\": \"Doloropolis\",\n        \"region\": \"Ametshire\",\n        \"postalCode\": \"LI3 4TX\",\n        \"country\": \"GB\"\n      }\n    }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "Create Payment Method",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"card\",\n  \"label\": \"Sit amet card ending 5454\",\n  \"default\": false,\n  \"billingAddress\": {\n    \"line1\": \"9 Dolor Way\",\n    \"line2\": null,\n    \"city\": \"Doloropolis\",\n    \"region\": \"Ametshire\",\n    \"postalCode\": \"LI3 4TX\",\n    \"country\": \"GB\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/payments/methods",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "payments",
+                "methods"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "201 Created",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"type\": \"card\",\n  \"label\": \"Sit amet card ending 5454\",\n  \"default\": false,\n  \"billingAddress\": {\n    \"line1\": \"9 Dolor Way\",\n    \"line2\": null,\n    \"city\": \"Doloropolis\",\n    \"region\": \"Ametshire\",\n    \"postalCode\": \"LI3 4TX\",\n    \"country\": \"GB\"\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/v1/payments/methods",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "v1",
+                    "payments",
+                    "methods"
+                  ]
+                }
+              },
+              "status": "Created",
+              "code": 201,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "Location",
+                  "value": "/v1/payments/methods/pm-0003"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"methodId\": \"pm-0003\",\n  \"type\": \"card\",\n  \"label\": \"Sit amet card ending 5454\",\n  \"default\": false,\n  \"billingAddress\": {\n    \"line1\": \"9 Dolor Way\",\n    \"line2\": null,\n    \"city\": \"Doloropolis\",\n    \"region\": \"Ametshire\",\n    \"postalCode\": \"LI3 4TX\",\n    \"country\": \"GB\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Payment Method",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/payments/methods/:methodId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "payments",
+                "methods",
+                ":methodId"
+              ],
+              "variable": [
+                {
+                  "key": "methodId",
+                  "value": "{{methodId}}"
+                }
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/v1/payments/methods/:methodId",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "v1",
+                    "payments",
+                    "methods",
+                    ":methodId"
+                  ],
+                  "variable": [
+                    {
+                      "key": "methodId",
+                      "value": "pm-0001"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"methodId\": \"pm-0001\",\n  \"type\": \"card\",\n  \"label\": \"Lorem card ending 4242\",\n  \"default\": true,\n  \"billingAddress\": {\n    \"line1\": \"12 Lorem Street\",\n    \"line2\": \"Ipsum Quarter\",\n    \"city\": \"Doloropolis\",\n    \"region\": \"Ametshire\",\n    \"postalCode\": \"LI1 2PS\",\n    \"country\": \"GB\"\n  }\n}"
+            },
+            {
+              "name": "404 Not Found",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/v1/payments/methods/:methodId",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "v1",
+                    "payments",
+                    "methods",
+                    ":methodId"
+                  ],
+                  "variable": [
+                    {
+                      "key": "methodId",
+                      "value": "pm-9999"
+                    }
+                  ]
+                }
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"error\": \"not_found\",\n  \"message\": \"No such payment method for this customer\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Update Payment Method",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"card\",\n  \"label\": \"Lorem card ending 4242\",\n  \"default\": true,\n  \"billingAddress\": {\n    \"line1\": \"77 Consectetur Close\",\n    \"line2\": \"Adipiscing Park\",\n    \"city\": \"Doloropolis\",\n    \"region\": \"Ametshire\",\n    \"postalCode\": \"LI5 6QR\",\n    \"country\": \"GB\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/payments/methods/:methodId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "payments",
+                "methods",
+                ":methodId"
+              ],
+              "variable": [
+                {
+                  "key": "methodId",
+                  "value": "{{methodId}}"
+                }
+              ]
+            },
+            "description": "Update a payment method, including its billing address. This is the write half of purpose 5 and is one of the @stateful round-trips."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"type\": \"card\",\n  \"label\": \"Lorem card ending 4242\",\n  \"default\": true,\n  \"billingAddress\": {\n    \"line1\": \"77 Consectetur Close\",\n    \"line2\": \"Adipiscing Park\",\n    \"city\": \"Doloropolis\",\n    \"region\": \"Ametshire\",\n    \"postalCode\": \"LI5 6QR\",\n    \"country\": \"GB\"\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/v1/payments/methods/:methodId",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "v1",
+                    "payments",
+                    "methods",
+                    ":methodId"
+                  ],
+                  "variable": [
+                    {
+                      "key": "methodId",
+                      "value": "pm-0001"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"methodId\": \"pm-0001\",\n  \"type\": \"card\",\n  \"label\": \"Lorem card ending 4242\",\n  \"default\": true,\n  \"billingAddress\": {\n    \"line1\": \"77 Consectetur Close\",\n    \"line2\": \"Adipiscing Park\",\n    \"city\": \"Doloropolis\",\n    \"region\": \"Ametshire\",\n    \"postalCode\": \"LI5 6QR\",\n    \"country\": \"GB\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Delete Payment Method",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/payments/methods/:methodId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "payments",
+                "methods",
+                ":methodId"
+              ],
+              "variable": [
+                {
+                  "key": "methodId",
+                  "value": "{{methodId}}"
+                }
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "204 No Content",
+              "originalRequest": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/v1/payments/methods/:methodId",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "v1",
+                    "payments",
+                    "methods",
+                    ":methodId"
+                  ],
+                  "variable": [
+                    {
+                      "key": "methodId",
+                      "value": "pm-0002"
+                    }
+                  ]
+                }
+              },
+              "status": "No Content",
+              "code": 204,
+              "_postman_previewlanguage": "text",
+              "header": [],
+              "cookie": [],
+              "body": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Loyalty",
+      "description": "Purpose 6.\n\nWORKLOAD: mock AWS Lambda, not ECS. Per README section 2A every route except loyalty is a mock ECS task; loyalty is the Lambda. It is reached through the same ALB listeners and promoted by the same atomic swap, so it is indistinguishable from an ECS route to the caller.\n\nPATH IS PINNED: /edge/kvs/routing.yaml rewrites /join to /v1/loyalty/signup and the legacy /v1/loyalty-program-11 to /v1/loyalty.",
+      "item": [
+        {
+          "name": "Sign Up For Loyalty Program",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"accountId\": \"{{accountId}}\",\n  \"optIn\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/loyalty/signup",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "loyalty",
+                "signup"
+              ]
+            },
+            "description": "Set the loyalty ID. Enrol the account and mint a loyalty programme ID.\n\nIDEMPOTENT: signing up an already-enrolled account returns 201 with the existing enrolment rather than a conflict. This is what keeps the example satisfiable against the seeded data, where acc-0001 is already enrolled, and it makes the request safe to retry."
+          },
+          "response": [
+            {
+              "name": "201 Created",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"accountId\": \"acc-0001\",\n  \"optIn\": true\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/v1/loyalty/signup",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "v1",
+                    "loyalty",
+                    "signup"
+                  ]
+                }
+              },
+              "status": "Created",
+              "code": 201,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"loyaltyId\": \"LOY-4F2A9C\",\n  \"accountId\": \"acc-0001\",\n  \"status\": \"active\",\n  \"enrolledAt\": \"2026-08-31T10:00:00Z\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Loyalty ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/loyalty?accountId={{accountId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "loyalty"
+              ],
+              "query": [
+                {
+                  "key": "accountId",
+                  "value": "{{accountId}}"
+                }
+              ]
+            },
+            "description": "Get the loyalty ID for one of the customer's accounts.\n\nEnrolment is per account, matching the accountId that Sign Up accepts and returns. That also keeps the enrolled and not-enrolled examples below distinguishable BY THEIR REQUEST, which is what lets both be tested against a real implementation -- a single account cannot be simultaneously enrolled and not enrolled.\n\nIn the seeded demo data acc-0001 is enrolled and acc-0002 is not."
+          },
+          "response": [
+            {
+              "name": "200 OK - enrolled",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/v1/loyalty?accountId=acc-0001",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "v1",
+                    "loyalty"
+                  ],
+                  "query": [
+                    {
+                      "key": "accountId",
+                      "value": "acc-0001"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"loyaltyId\": \"LOY-4F2A9C\",\n  \"accountId\": \"acc-0001\",\n  \"status\": \"active\",\n  \"points\": 120\n}"
+            },
+            {
+              "name": "404 Not Found - not enrolled",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/v1/loyalty?accountId=acc-0002",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "v1",
+                    "loyalty"
+                  ],
+                  "query": [
+                    {
+                      "key": "accountId",
+                      "value": "acc-0002"
+                    }
+                  ]
+                }
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"error\": \"not_found\",\n  \"message\": \"This account is not enrolled in the loyalty programme\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Account Closure",
+      "description": "Purpose 8. POST requests closure, GET reports its status, which is always Pending in this demo.",
+      "item": [
+        {
+          "name": "Request Account Closure",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Lorem ipsum relocation\",\n  \"effectiveDate\": \"2026-09-30\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/accounts/:accountId/closure",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "accounts",
+                ":accountId",
+                "closure"
+              ],
+              "variable": [
+                {
+                  "key": "accountId",
+                  "value": "{{accountId}}"
+                }
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "202 Accepted",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reason\": \"Lorem ipsum relocation\",\n  \"effectiveDate\": \"2026-09-30\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/v1/accounts/:accountId/closure",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "v1",
+                    "accounts",
+                    ":accountId",
+                    "closure"
+                  ],
+                  "variable": [
+                    {
+                      "key": "accountId",
+                      "value": "acc-0001"
+                    }
+                  ]
+                }
+              },
+              "status": "Accepted",
+              "code": 202,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"accountId\": \"acc-0001\",\n  \"closureRequestId\": \"clo-0001\",\n  \"status\": \"Pending\",\n  \"reason\": \"Lorem ipsum relocation\",\n  \"requestedAt\": \"2026-08-31T10:00:00Z\",\n  \"effectiveDate\": \"2026-09-30\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Account Closure Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/accounts/:accountId/closure",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "accounts",
+                ":accountId",
+                "closure"
+              ],
+              "variable": [
+                {
+                  "key": "accountId",
+                  "value": "{{accountId}}"
+                }
+              ]
+            },
+            "description": "Status of the closure request. Always Pending per purpose 8."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/v1/accounts/:accountId/closure",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "v1",
+                    "accounts",
+                    ":accountId",
+                    "closure"
+                  ],
+                  "variable": [
+                    {
+                      "key": "accountId",
+                      "value": "acc-0001"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"accountId\": \"acc-0001\",\n  \"closureRequestId\": \"clo-0001\",\n  \"status\": \"Pending\",\n  \"reason\": \"Lorem ipsum relocation\",\n  \"requestedAt\": \"2026-08-31T10:00:00Z\",\n  \"effectiveDate\": \"2026-09-30\"\n}"
+            },
+            {
+              "name": "404 Not Found - no closure requested",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/v1/accounts/:accountId/closure",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "v1",
+                    "accounts",
+                    ":accountId",
+                    "closure"
+                  ],
+                  "variable": [
+                    {
+                      "key": "accountId",
+                      "value": "acc-0002"
+                    }
+                  ]
+                }
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"error\": \"not_found\",\n  \"message\": \"No closure request exists for this account\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Ops",
+      "description": "Not a customer purpose. These exist so the harness can prove which blue/green pool served a request, and so the ALB has a health check target.",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/healthz",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "healthz"
+              ]
+            },
+            "description": "ALB target group health check target."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/healthz",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "healthz"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"status\": \"ok\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Whoami",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/whoami",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "whoami"
+              ]
+            },
+            "description": "Reports which pool and which build served this request. Without this the harness cannot demonstrate that an atomic listener swap actually moved traffic."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/v1/whoami",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "v1",
+                    "whoami"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"pool\": \"blue\",\n  \"role\": \"active\",\n  \"workload\": \"ecs\",\n  \"version\": \"0.1.0\",\n  \"store\": \"yaml\"\n}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

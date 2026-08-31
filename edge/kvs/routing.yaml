@@ -1,6 +1,6 @@
 # URI rewrite table for the mock CloudFront KeyValueStore.
 #
-# Seeded into the real store by terraform/kvs.tf; read directly by the local
+# Seeded into the real store by stub-tf/kvs.tf; read directly by the local
 # edge shim. This file is the single source of truth for both.
 #
 # Format: a list of { from, to } pairs.
@@ -23,6 +23,6 @@
 
 # Legacy path migrations
 - from: "/v1/payment-old"
-  to:   "/v1/payments-new"
+  to:   "/v1/payments/methods"
 - from: "/v1/loyalty-program-11"
   to:   "/v1/loyalty"

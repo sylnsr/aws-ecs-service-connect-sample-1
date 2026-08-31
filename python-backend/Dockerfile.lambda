@@ -1,0 +1,25 @@
+# Lambda image. Serves the loyalty routes only.
+#
+# Built on the AWS base image so the Runtime Interface Client is already
+# present and the container can be tested locally with the Runtime Interface
+# Emulator. STORE is fixed to dynamodb: a Lambda has no durable filesystem to
+# put a YAML file on, and it must share state with the ECS tasks anyway --
+# loyalty enrolment is read by one workload and written by the other.
+
+FROM public.ecr.aws/lambda/python:3.12
+
+ENV WORKLOAD=lambda \
+    STORE=dynamodb \
+    PYTHONDONTWRITEBYTECODE=1
+
+# requirements-lambda.txt, not requirements.txt: uvicorn and its [standard]
+# extras are dead weight here. Mangum drives the ASGI app directly and no
+# server is ever started, so that would be cold-start cost paid on every
+# scale-out for nothing.
+COPY requirements-lambda.txt ${LAMBDA_TASK_ROOT}/
+RUN pip install --no-cache-dir -r ${LAMBDA_TASK_ROOT}/requirements-lambda.txt
+
+COPY awuca/ ${LAMBDA_TASK_ROOT}/awuca/
+COPY main_lambda.py ${LAMBDA_TASK_ROOT}/
+
+CMD ["main_lambda.handler"]

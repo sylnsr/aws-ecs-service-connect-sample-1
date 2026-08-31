@@ -1,0 +1,17 @@
+# Keep the build context small and keep local state out of the image. A copied
+# data/ directory would ship one developer's YAML store to every task.
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+data/
+
+tests/
+README.md
+MEMORY.md
+.gitignore
+Dockerfile
+Dockerfile.lambda
+requirements-dev.txt

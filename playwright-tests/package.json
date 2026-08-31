@@ -1,0 +1,21 @@
+{
+  "name": "awuca-playwright-tests",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Contract and stateful API tests for the ACME Water Utility Customer App, generated from the Postman collection.",
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "test:prism": "playwright test --project=prism",
+    "test:python": "playwright test --project=python-local",
+    "test:aws": "playwright test --project=python-aws",
+    "cases": "node --experimental-strip-types src/list-cases.ts",
+    "report": "playwright show-report"
+  },
+  "comment": "@playwright/test is pinned exactly, not ^: run.sh runs the suite in mcr.microsoft.com/playwright:v1.49.0-noble and the driver should match the image tag.",
+  "devDependencies": {
+    "@playwright/test": "1.49.0",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  }
+}

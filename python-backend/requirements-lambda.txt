@@ -1,0 +1,17 @@
+# Lambda runtime dependencies.
+#
+# Deliberately NOT `-r requirements.txt`: uvicorn and its [standard] extras
+# (uvloop, httptools, websockets) are dead weight in a Lambda. Mangum drives
+# the ASGI app directly and no server is ever started, so every byte of that
+# is cold-start cost paid on each scale-out for nothing.
+#
+# Keep the shared pins in step with requirements.txt by hand. The duplication
+# is the honest cost of two runtimes with genuinely different needs; a shared
+# file plus a post-install uninstall would be worse, since it downloads and
+# compiles the packages first.
+
+fastapi==0.115.6
+pydantic==2.10.4
+PyYAML==6.0.2
+mangum==0.19.0
+boto3==1.35.90

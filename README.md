@@ -35,8 +35,12 @@ When instructing an AI LLM to generate, extend, or scaffold components within th
 ### **A. Mock Microservices (Postman Collection Integration)**
 
 * **Source of Truth:** Postman JSON collections located in `/postman/`.
-* **Implementation Requirement:** Use Podman (rootless) **Prism** containers to spin up mock endpoints matching the exact route, method, request payload schema, and response codes defined in the Postman collection.
-* **Target Mapping:** Each mock microservice container must expose an environment variable pointing to its corresponding ECS/Lambda routing stub.
+* **Implementation Requirement:** Use Podman (rootless) **Prism** containers to spin up mock endpoints matching the exact route, method, request payload schema, and response codes defined in the Postman collection. `./prism/start.sh` does this; see [prism/README.md](prism/README.md).
+* **Everything local is containerized.** Podman (or Docker) is the only host requirement — no Node, Python or Terraform install — so removing an image is the whole clean-up. Each component has its own script: `prism/start.sh`, `python-backend/{build,run,test}.sh`, `playwright-tests/run.sh`, `vue-frontend/{build,run}.sh`, `stub-tf/validate.sh`. They share an `awuca` network and address each other by container name rather than `localhost`, which is the only arrangement that behaves identically on the two target hosts, Debian and Mac. Quick start in [TLDR.md](TLDR.md).
+* **Target Mapping:** Each mock microservice container must expose an environment variable pointing to its corresponding ECS/Lambda routing stub. All functionality except those that pertain to "loyalty" are to be mock ECS tasks whereas the "loyalty" oriented API tasks are to be mock Lambda.
+* **Prism is the baseline, not a substitute.** The collection in `/postman/` drives three things, and the order matters: Prism serves the shape with no code at all, `/playwright-tests/` **generates** one contract test per saved example, and `/python-backend/` must satisfy those same examples. Running the generated suite against Prism first establishes that the tests agree with the collection; running the identical suite against the real app then measures the app, not the tests. See [playwright-tests/README.md](playwright-tests/README.md).
+* **Prism is stateless.** It replays canned examples and has no notion of a write taking effect, so anything the collection documents as a *transition* is unprovable there. This is why the Playwright suite is split by tag rather than duplicated: `@contract` runs everywhere, `@stateful` runs only against a real implementation.
+* **Two examples on one endpoint must differ in their *request*.** Prism will happily serve both a 200 and a 404 for byte-identical requests, selected by the `Prefer: code=<n>` header; no real backend can. Endpoints documenting both a success and a not-found case therefore vary the request—see the seed-data asymmetry in [python-backend/README.md](python-backend/README.md).
 
 ### **B. Mock S3 Buckets**
 
@@ -88,16 +92,17 @@ With these entries `https://host/bill` rewrites to `/v1/billing/statement`, and 
 
 ### **F. Terraform Infrastructure as Code (IaC)**
 
-* **Implementation Requirement:** The AI LLM must generate corresponding Terraform configurations (`*.tf`) in a `/terraform/` directory that provision the exact cloud equivalents of the local simulation components.
+* **Implementation Requirement:** The AI LLM must generate corresponding Terraform configurations (`*.tf`) in the `/stub-tf/` directory that provision the exact cloud equivalents of the local simulation components. The directory is named `stub-tf` rather than `terraform` because the configurations are authored against the design and have never been applied—see [stub-tf/README.md](stub-tf/README.md).
 * **Module Structure:**
 * **`cloudfront.tf`:** Provisions the AWS CloudFront distribution, associated CloudFront Functions (`runtime = "cloudfront-js-2.0"`, source read from `/edge/functions/` with the KVS ID substituted in, and `key_value_store_associations` wired to the store), and caching policies.
 * **`kvs.tf`:** Provisions the CloudFront KeyValueStore (`aws_cloudfront_key_value_store`) and seeds it from `/edge/kvs/<store>.yaml` using `aws_cloudfrontkeyvaluestore_key` with `for_each = { for r in yamldecode(file(...)) : r.from => r.to }`, which projects the authored list into the flat key→string map the store requires. Seeding through Terraform rather than the CLI avoids the ETag read-modify-write cycle the `cloudfront-keyvaluestore` API otherwise requires on every write.
-* **`alb.tf`:** Provisions the Application Load Balancer, the blue and green target groups, the production and CodeDeploy test listeners, and the security groups—including the rule restricting the test listener to tester and CI source ranges.
-* **`ecs.tf`:** Provisions the ECS Cluster, Task Definitions, ECS Services utilizing **Amazon ECS Service Connect** for service-to-service communication, and CodeDeploy deployment groups configured with a test listener and validation lifecycle hooks for blue/green rollouts.
+* **`alb.tf`:** Provisions the Application Load Balancer, the blue and green target groups, the production and CodeDeploy test listeners, and the security groups—including the rule restricting the test listener to tester and CI source ranges. The production listener must carry `lifecycle { ignore_changes = [default_action] }`: CodeDeploy repoints that listener on every promotion, so if Terraform also declares it the next `apply` either reverts the swap or reports permanent drift.
+* **`ecs.tf`:** Provisions the ECS Cluster, Task Definitions, ECS Services utilizing **Amazon ECS Service Connect** for service-to-service communication, and CodeDeploy deployment groups configured with a test listener and validation lifecycle hooks for blue/green rollouts. Services must ignore changes to `task_definition`, `load_balancer` and `desired_count` for the same reason as the listener—CodeDeploy owns those at deploy time.
 * **`lambda.tf`:** Provisions the Lambda functions, their execution roles, and the ALB Lambda target groups that front them, with a stable production alias and a separate test alias swapped atomically rather than weighted.
 * **`s3.tf`:** Provisions S3 buckets with appropriate versioning, encryption, and public access blocks mirroring the local S3/SeaweedFS storage.
 
 
+* **Ownership Boundary:** Terraform provisions the *machinery*; CodeDeploy *operates* it. Any attribute CodeDeploy mutates at deploy time must be excluded from Terraform's desired state via `ignore_changes`, or the two will fight over it. See [docs/release-process.md](docs/release-process.md) for the full table.
 * **Parameterization:** All resource configurations must utilize Terraform variables (`variables.tf`) and outputs (`outputs.tf`) to support multi-environment deployment (dev, staging, production) without hardcoded strings.
 
 ---
@@ -114,14 +119,18 @@ To validate zero-downtime deployments locally using the patterns referenced in t
 
 The ALB is the **single deployment control point**. Traffic moves in one binary step, never a weighted ramp:
 
-| Listener | Points at | Audience |
-| --- | --- | --- |
-| **Production** | Active pool | Customers |
-| **Test** | Standby pool | Testers, CI |
+| Listener       | Points at    | Audience    |
+|----------------|--------------|-------------|
+| **Production** | Active pool  | Customers   |
+| **Test**       | Standby pool | Testers, CI |
 
 Cohort membership is decided by which listener you connect to, so routing is fully deterministic. **No stickiness cookie is required**—a session cannot be reassigned mid-flow the way weighted random assignment allows.
 
 CloudFront KeyValueStore is deliberately **not** part of this path; it serves URI rewrites only (§2D). Keeping deployment control in one place is what makes a rehearsal interpretable—exactly one thing moves.
+
+### Cloud Release Process
+
+The workflow above is the local rehearsal of a real pipeline. [docs/release-process.md](docs/release-process.md) documents the AWS side: why blue and green are alternating **roles** rather than fixed environments, the three Azure DevOps Server pipelines (infra, KVS content, release) and why Terraform is separated from app releases by cadence, the Terraform/CodeDeploy ownership boundary, and the termination wait as the rollback window.
 
 ---
 

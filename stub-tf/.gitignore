@@ -1,0 +1,11 @@
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+crash.log
+*.tfplan
+
+# Real values, not the example. Subnet IDs and secret ARNs are not secrets
+# exactly, but they identify an account and do not belong in a generic repo.
+*.tfvars
+!terraform.tfvars.example

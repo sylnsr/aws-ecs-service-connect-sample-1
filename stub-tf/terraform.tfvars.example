@@ -1,0 +1,32 @@
+# Copy to <env>.tfvars and fill in. Every value here is site-specific; nothing
+# in the module hardcodes an account, a VPC or a domain.
+#
+#   terraform plan -var-file=dev.tfvars
+
+environment = "dev"
+region      = "eu-west-2"
+
+# This module does not create a VPC -- see README. Supply an existing one.
+vpc_id             = "vpc-00000000000000000"
+public_subnet_ids  = ["subnet-0aaa", "subnet-0bbb"]
+private_subnet_ids = ["subnet-0ccc", "subnet-0ddd"]
+
+# Testers and CI only. Never 0.0.0.0/0 -- the module rejects it. This is the
+# control that keeps the standby pool off the public internet while it is being
+# validated.
+test_listener_cidrs = ["203.0.113.0/24"]
+
+ecs_image    = "000000000000.dkr.ecr.eu-west-2.amazonaws.com/awuca-backend:0.1.0"
+lambda_image = "000000000000.dkr.ecr.eu-west-2.amazonaws.com/awuca-loyalty:0.1.0"
+
+# Must resolve to the SAME value for both pools, or a promotion logs every
+# customer out.
+token_secret_arn = "arn:aws:secretsmanager:eu-west-2:000000000000:secret:awuca/token-secret-AbCdEf"
+
+# The rollback window. Short here because a dev pool is cheap to redeploy;
+# production should be long enough to notice a fault under real load.
+termination_wait_minutes = 15
+
+# Leave both empty to use the default *.cloudfront.net name.
+domain_name         = ""
+acm_certificate_arn = ""
