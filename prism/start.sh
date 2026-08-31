@@ -107,17 +107,28 @@ fi
 # inside a container means nothing outside it can connect -- not the host, and
 # not another container on the same network.
 #
+# -m false is not optional either, and is far less obvious. Prism defaults to
+# multiprocess, which crashes on startup in this image:
+#
+#   TypeError: Cannot read properties of undefined (reading 'isPrimary')
+#       at createMultiProcessPrism (.../util/createServer.js)
+#
+# `cluster` is undefined where Prism expects it, so the fork never happens. It
+# exits immediately, before binding a port, and prints the yargs usage block
+# above the stack trace -- which makes it read like an argument error rather
+# than the runtime bug it is. Single-process is fine here: one developer's
+# mock does not need forked log processing.
+#
 # The published port is still bound to 127.0.0.1: it is there for curl and the
 # Vue dev server on the host, and there is no reason for a mock holding
 # lorem-ipsum data to be reachable from the rest of the network.
 run_args=(
   --name "$CONTAINER_NAME"
-  --init
   --network "$NETWORK"
   -p "127.0.0.1:${PRISM_PORT}:4010"
   -v "${COLLECTION_DIR}:/collection:${MOUNT_OPTS}"
   "$PRISM_IMAGE"
-  mock -h 0.0.0.0 -p 4010 "/collection/${COLLECTION_FILE}"
+  mock -h 0.0.0.0 -p 4010 -m false "/collection/${COLLECTION_FILE}"
 )
 
 if [ "$DETACH" -eq 0 ]; then
