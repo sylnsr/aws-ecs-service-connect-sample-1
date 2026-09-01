@@ -49,17 +49,6 @@ async function submit() {
       <h2>{{ section.heading }}</h2>
       <p>{{ section.body }}</p>
     </div>
-
-    <!--
-      These hrefs are the vanity URLs from edge/kvs/routing.yaml (/pay, /bill,
-      /join). CloudFront rewrites them onto the real API paths at the edge, so
-      they are deliberately NOT router links.
-    -->
-    <ul class="links">
-      <li v-for="link in landing.links" :key="link.href">
-        <a :href="link.href">{{ link.label }}</a>
-      </li>
-    </ul>
   </section>
 
   <section class="card">

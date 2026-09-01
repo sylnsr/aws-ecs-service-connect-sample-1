@@ -52,6 +52,11 @@ fi
 
 "$CONTAINER_CLI" network create "$NETWORK" >/dev/null 2>&1 || true
 "$CONTAINER_CLI" volume create "$MODULES_VOLUME" >/dev/null 2>&1 || true
+# The npm install below only runs on a cold volume, but that is exactly when a
+# TLS-intercepting proxy bites. See scripts/ca-bundle.sh.
+# shellcheck source=../scripts/ca-bundle.sh
+source "${HERE}/../scripts/ca-bundle.sh"
+
 "$CONTAINER_CLI" rm -f awuca-vue >/dev/null 2>&1 || true
 
 TTY_FLAG=()
@@ -67,6 +72,7 @@ exec "$CONTAINER_CLI" run --rm "${TTY_FLAG[@]}" \
   -p "127.0.0.1:${PORT}:5173" \
   -v "${HERE}:/app:${RW}" \
   -v "${MODULES_VOLUME}:/app/node_modules" \
+  "${CA_ARGS[@]}" \
   -w /app \
   -e "AWUCA_API_URL=${API_URL}" \
   -e npm_config_update_notifier=false \

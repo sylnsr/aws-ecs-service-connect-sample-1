@@ -6,8 +6,13 @@ from fastapi import APIRouter
 
 router = APIRouter(tags=["public"])
 
-# The links point at the vanity URLs in edge/kvs/routing.yaml, so the landing
-# page is also a live demonstration of the CloudFront Function rewrites.
+# Marketing copy only. This payload once carried a `links` list pointing at the
+# vanity URLs in edge/kvs/routing.yaml, on the theory that the landing page
+# doubled as a live demonstration of the CloudFront Function rewrites. It did
+# not: all three targets are authenticated (/v1/loyalty/signup is POST-only), so
+# a signed-out visitor clicking them gets 401 or 405, never a rewrite worth
+# seeing. The rewrite table belongs to the edge tier and should be exercised
+# there, against rewrite.js, not inferred from an anchor tag on this page.
 _LANDING = {
     "title": "ACME Water Utility",
     "hero": "Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
@@ -20,11 +25,6 @@ _LANDING = {
             "heading": "Duis aute",
             "body": "Irure dolor in reprehenderit in voluptate velit esse cillum dolore.",
         },
-    ],
-    "links": [
-        {"label": "Pay a bill", "href": "/pay"},
-        {"label": "View statement", "href": "/bill"},
-        {"label": "Join loyalty", "href": "/join"},
     ],
 }
 

@@ -18,6 +18,7 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${HERE}/.." && pwd)"
 
 IMAGE="${TERRAFORM_IMAGE:-docker.io/hashicorp/terraform:1.9}"
 
@@ -38,18 +39,35 @@ else
   exit 1
 fi
 
+RO="ro"
 RW="rw"
 if command -v selinuxenabled >/dev/null 2>&1 && selinuxenabled 2>/dev/null; then
+  RO="ro,Z"
   RW="rw,Z"
 fi
 
-# Read-write because init writes .terraform/ and the lock file. Both are
-# gitignored; the lock file would be committed in a real deployment repo, but
-# this configuration is never applied.
+# `init` is the only step here that reaches the network, and it is the step
+# that breaks behind a TLS-intercepting proxy. See scripts/ca-bundle.sh.
+# shellcheck source=../scripts/ca-bundle.sh
+source "${HERE}/../scripts/ca-bundle.sh"
+
+# THE WHOLE REPO, not just stub-tf/. The configuration reaches upwards --
+# kvs.tf and locals.tf call file() on "${path.module}/../edge/..." to inline
+# the CloudFront Function source and the KVS routing table. Mount stub-tf/
+# alone and those paths land outside the container, and `validate` reports
+# three "no file exists" errors that look like a broken configuration but are
+# really a missing mount.
+#
+# Read-only for the repo, read-write for stub-tf/ nested inside it, because
+# init writes .terraform/ and the lock file and nothing else here should be
+# writable. Both are gitignored; the lock file would be committed in a real
+# deployment repo, but this configuration is never applied.
 tf() {
   "$CONTAINER_CLI" run --rm \
-    -v "${HERE}:/work:${RW}" \
-    -w /work \
+    -v "${REPO_ROOT}:/work:${RO}" \
+    -v "${HERE}:/work/stub-tf:${RW}" \
+    "${CA_ARGS[@]}" \
+    -w /work/stub-tf \
     "$IMAGE" "$@"
 }
 
@@ -59,7 +77,17 @@ echo "==> terraform fmt -check -recursive"
 tf fmt -check -recursive -diff || status=1
 
 echo "==> terraform init -backend=false"
-tf init -backend=false -input=false || { echo "init failed; cannot validate" >&2; exit 1; }
+if ! tf init -backend=false -input=false; then
+  {
+    echo
+    echo "init failed; cannot validate."
+    echo "If the error mentions x509 or 'certificate signed by unknown authority',"
+    echo "the proxy's CA is missing inside the container rather than anything being"
+    echo "wrong with the configuration. Point AWUCA_CA_BUNDLE at a complete PEM"
+    echo "bundle and re-run; see scripts/ca-bundle.sh."
+  } >&2
+  exit 1
+fi
 
 echo "==> terraform validate"
 tf validate || status=1

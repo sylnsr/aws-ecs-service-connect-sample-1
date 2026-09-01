@@ -109,7 +109,7 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n  \"title\": \"ACME Water Utility\",\n  \"hero\": \"Lorem ipsum dolor sit amet, consectetur adipiscing elit.\",\n  \"sections\": [\n    {\n      \"heading\": \"Lorem ipsum\",\n      \"body\": \"Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.\"\n    },\n    {\n      \"heading\": \"Duis aute\",\n      \"body\": \"Irure dolor in reprehenderit in voluptate velit esse cillum dolore.\"\n    }\n  ],\n  \"links\": [\n    { \"label\": \"Pay a bill\", \"href\": \"/pay\" },\n    { \"label\": \"View statement\", \"href\": \"/bill\" },\n    { \"label\": \"Join loyalty\", \"href\": \"/join\" }\n  ]\n}"
+              "body": "{\n  \"title\": \"ACME Water Utility\",\n  \"hero\": \"Lorem ipsum dolor sit amet, consectetur adipiscing elit.\",\n  \"sections\": [\n    {\n      \"heading\": \"Lorem ipsum\",\n      \"body\": \"Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.\"\n    },\n    {\n      \"heading\": \"Duis aute\",\n      \"body\": \"Irure dolor in reprehenderit in voluptate velit esse cillum dolore.\"\n    }\n  ]\n}"
             }
           ]
         }

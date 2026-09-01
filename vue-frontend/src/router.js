@@ -14,7 +14,11 @@ const routes = [
   // Anything else goes home rather than rendering a blank page. CloudFront is
   // configured to serve index.html for unmatched paths, so a deep link that
   // this table does not know about still reaches the router.
-  { path: '/:pathMatch(.*)*', redirect: { name: 'landing' } },
+  //
+  // Redirect by path, not by name. A named redirect carries the matched params
+  // forward, and `landing` has no `pathMatch` param -- vue-router drops it and
+  // warns on every unmatched URL.
+  { path: '/:pathMatch(.*)*', redirect: '/' },
 ]
 
 export const router = createRouter({

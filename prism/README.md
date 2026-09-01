@@ -59,7 +59,8 @@ curl -i -H 'Prefer: code=404' -H 'Authorization: Bearer x' \
 ```
 
 If that returns 200, Prism is ignoring the header and every negative contract case is meaningless against the mock
-which will need to be fixed.
+which will need to be fixed. Note however, the point of this is not getting the app functioning a specific way, but
+instead, to demonstrate a the development and deployment flow. 
 
 ## It reads the collection once, at startup
 

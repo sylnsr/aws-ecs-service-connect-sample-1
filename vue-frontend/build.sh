@@ -45,12 +45,18 @@ if command -v selinuxenabled >/dev/null 2>&1 && selinuxenabled 2>/dev/null; then
   RW="rw,Z"
 fi
 
+# `npm install` below is the only step that reaches the network, and it is the
+# step that breaks behind a TLS-intercepting proxy. See scripts/ca-bundle.sh.
+# shellcheck source=../scripts/ca-bundle.sh
+source "${HERE}/../scripts/ca-bundle.sh"
+
 "$CONTAINER_CLI" volume create "$MODULES_VOLUME" >/dev/null 2>&1 || true
 
 "$CONTAINER_CLI" run --rm \
   --name awuca-vue-build \
   -v "${HERE}:/app:${RW}" \
   -v "${MODULES_VOLUME}:/app/node_modules" \
+  "${CA_ARGS[@]}" \
   -w /app \
   -e npm_config_update_notifier=false \
   "$IMAGE" \

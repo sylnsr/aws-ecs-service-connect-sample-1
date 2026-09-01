@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from functools import reduce
 from pathlib import Path
 from typing import Any
 
@@ -92,9 +93,46 @@ def _load_cases() -> list[dict[str, Any]]:
 CASES = _load_cases()
 
 
+def _merge_shapes(values: list[Any]) -> Any:
+    """Collapse every element of an example array into one element shape.
+
+    The port of mergeShapes in playwright-tests/src/shape.ts; keep the two in
+    step. Comparing each actual element against `expected[0]` alone is wrong
+    whenever the example array is heterogeneous, and the collection's payment
+    methods are exactly that: pm-0001 has a `billingAddress.line2` string,
+    pm-0002 has null there. Under the old rule the example failed against
+    ITSELF, so the app was blamed for reproducing its own documentation.
+    """
+
+    def merge(merged: Any, value: Any) -> Any:
+        # Rule 2 again: a null in any element makes the field a wildcard.
+        if merged is None or value is None:
+            return None
+
+        if isinstance(merged, list) and isinstance(value, list):
+            return merged + value
+
+        if isinstance(merged, dict) and isinstance(value, dict):
+            # A key absent from either element is optional, hence None.
+            return {
+                key: (
+                    _merge_shapes([merged[key], value[key]])
+                    if key in merged and key in value
+                    else None
+                )
+                for key in {**merged, **value}
+            }
+
+        # Primitives, or a type that differs between elements: keep the first.
+        return merged
+
+    return reduce(merge, values)
+
+
 def _shape_mismatches(actual: Any, expected: Any, at: str = "$") -> list[str]:
-    """Same three rules as playwright-tests/src/shape.ts: extra keys allowed,
-    null is a wildcard, an empty array matches a non-empty example."""
+    """Same four rules as playwright-tests/src/shape.ts: extra keys allowed,
+    null is a wildcard, an empty array matches a non-empty example, and EVERY
+    element of an example array contributes to the element shape."""
     if expected is None:
         return []
 
@@ -103,7 +141,9 @@ def _shape_mismatches(actual: Any, expected: Any, at: str = "$") -> list[str]:
             return [f"{at}: expected array, got {type(actual).__name__}"]
         if not expected or not actual:
             return []
-        return [m for i, e in enumerate(actual) for m in _shape_mismatches(e, expected[0], f"{at}[{i}]")]
+        # Rule 4: the whole example array defines the element shape, not [0].
+        element = _merge_shapes(expected)
+        return [m for i, e in enumerate(actual) for m in _shape_mismatches(e, element, f"{at}[{i}]")]
 
     if isinstance(expected, dict):
         if not isinstance(actual, dict):
@@ -159,6 +199,24 @@ def test_example_is_satisfied(
 
     mismatches = _shape_mismatches(response.json(), case["expected_body"])
     assert not mismatches, "\n".join(mismatches) + f"\n\nActual: {response.text[:500]}"
+
+
+def test_every_example_satisfies_its_own_shape() -> None:
+    """The comparator's own invariant: no app, no server, no HTTP.
+
+    If a saved example does not match itself then the comparator is wrong, and
+    every failure it reports above is an accusation against the backend for
+    something the collection itself does. That is precisely what the
+    `expected[0]` rule did to Payment Methods > List Payment Methods > 200 OK.
+
+    Cheap to run and it fails first, so a comparator regression is named as one
+    instead of being investigated as a backend bug.
+    """
+    for case in CASES:
+        if case["expected_body"] is None:
+            continue
+        mismatches = _shape_mismatches(case["expected_body"], case["expected_body"])
+        assert not mismatches, f"{case['id']} does not satisfy itself: {'; '.join(mismatches)}"
 
 
 def test_collection_was_actually_loaded() -> None:

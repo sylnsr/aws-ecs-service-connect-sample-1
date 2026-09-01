@@ -1,4 +1,4 @@
-"""Shared fixtures.
+would"""Shared fixtures.
 
 The app is imported lazily inside the fixtures rather than at module top level.
 That is deliberate: `awuca.config` caches its settings on first read, so the

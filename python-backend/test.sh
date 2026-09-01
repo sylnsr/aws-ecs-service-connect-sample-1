@@ -52,6 +52,11 @@ fi
 TTY_FLAG=()
 [ -t 1 ] && TTY_FLAG=(-t)
 
+# The pip install below only runs on a cold venv volume, but that is exactly
+# when a TLS-intercepting proxy bites. See scripts/ca-bundle.sh.
+# shellcheck source=../scripts/ca-bundle.sh
+source "${REPO_ROOT}/scripts/ca-bundle.sh"
+
 # The repo is mounted READ-ONLY. The suite writes nothing: tests use pytest's
 # tmp_path for the YAML store, PYTHONDONTWRITEBYTECODE suppresses __pycache__,
 # and -p no:cacheprovider suppresses .pytest_cache. The whole repo rather than
@@ -61,6 +66,7 @@ exec "$CONTAINER_CLI" run --rm "${TTY_FLAG[@]}" \
   --name awuca-pytest \
   -v "${REPO_ROOT}:/work:${RO}" \
   -v "${VENV_VOLUME}:/opt/venv" \
+  "${CA_ARGS[@]}" \
   -w /work/python-backend \
   -e PYTHONDONTWRITEBYTECODE=1 \
   -e PIP_DISABLE_PIP_VERSION_CHECK=1 \

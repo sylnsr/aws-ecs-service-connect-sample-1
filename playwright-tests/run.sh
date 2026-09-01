@@ -85,12 +85,18 @@ fi
 TTY_FLAG=()
 [ -t 1 ] && TTY_FLAG=(-t)
 
+# The npm install below only runs on a cold volume, but that is exactly when a
+# TLS-intercepting proxy bites. See scripts/ca-bundle.sh.
+# shellcheck source=../scripts/ca-bundle.sh
+source "${REPO_ROOT}/scripts/ca-bundle.sh"
+
 exec "$CONTAINER_CLI" run --rm "${TTY_FLAG[@]}" \
   --name awuca-playwright \
   --network "$NETWORK" \
   -v "${REPO_ROOT}/postman:/work/postman:${RO}" \
   -v "${HERE}:/work/playwright-tests:${RW}" \
   -v "${MODULES_VOLUME}:/work/playwright-tests/node_modules" \
+  "${CA_ARGS[@]}" \
   -w /work/playwright-tests \
   -e "AWUCA_PRISM_URL=${PRISM_URL}" \
   -e "AWUCA_PYTHON_URL=${PYTHON_URL}" \
