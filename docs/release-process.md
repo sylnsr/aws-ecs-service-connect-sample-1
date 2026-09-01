@@ -1,4 +1,4 @@
-# Release Process
+# Atomic Blue/Green Cutover Process
 
 How a change reaches production in the AWS target environment, with application
 code and infrastructure Terraform both held in **Azure DevOps Server (ADO)**.
@@ -24,12 +24,13 @@ went live is not the thing that was tested. Every class of deploy-time failure
 you built this process to catch slips through the gap.
 
 CodeDeploy for ECS enforces the correct model anyway: it creates a **replacement
-task set**, shifts the listener to it, and destroys the **original task set**.
+task set**, shifts the listener to it, and **destroys the original task set**.
 There is no persistent "blue box" to push into. Accepting alternating roles is
 therefore both the idiomatic and the lower-friction choice.
 
-The practical consequence: **the pool that just went live becomes the standby —
-and therefore the canary target — for the next release.**
+The practical consequence of alternating roles: **the pool that just came out of
+live service becomes the standby — and therefore the canary target — for the
+next release.**
 
 ---
 
