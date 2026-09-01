@@ -4,7 +4,4 @@ claude.sh
 
 # HITL+ scratch. ask.sh is committed -- it is the request. Everything the
 # operator's run produces is a local artifact of one machine at one moment.
-ai/work/answer.md
-ai/work/.venv/
-ai/work/store/
-ai/work/*.log
+ai/work/*
